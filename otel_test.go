@@ -7,7 +7,6 @@ import (
 )
 
 func TestSetup(t *testing.T) {
-
 	var cfg Config
 	cfg.OtelServiceName = "testservice"
 	cfg.OtelBatchTimeout = time.Second
@@ -21,5 +20,4 @@ func TestSetup(t *testing.T) {
 	if err != nil {
 		t.Errorf("err is not null %s", err)
 	}
-
 }

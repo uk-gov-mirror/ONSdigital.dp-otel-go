@@ -17,7 +17,7 @@ import (
 // setupOTelSDK bootstraps the OpenTelemetry pipeline.
 // If it does not return an error, make sure to call shutdown for proper cleanup.
 func SetupOTelSDK(ctx context.Context, cfg Config) (shutdown func(context.Context) error, err error) {
-	var shutdownFuncs []func(context.Context) error
+	shutdownFuncs := make([]func(context.Context) error, 0, 1)
 
 	serviceName := cfg.OtelServiceName
 
@@ -25,12 +25,12 @@ func SetupOTelSDK(ctx context.Context, cfg Config) (shutdown func(context.Contex
 	// The errors from the calls are joined.
 	// Each registered cleanup will be invoked once.
 	shutdown = func(ctx context.Context) error {
-		var err error
+		var shutdownErr error
 		for _, fn := range shutdownFuncs {
-			err = errors.Join(err, fn(ctx))
+			shutdownErr = errors.Join(shutdownErr, fn(ctx))
 		}
 		shutdownFuncs = nil
-		return err
+		return shutdownErr
 	}
 
 	// handleErr calls shutdown for cleanup and makes sure that all errors are returned.
@@ -42,26 +42,25 @@ func SetupOTelSDK(ctx context.Context, cfg Config) (shutdown func(context.Contex
 	res, err := newResource(serviceName, ctx)
 	if err != nil {
 		handleErr(err)
-		return
+		return shutdown, err
 	}
 
 	// Setup trace provider.
 	tracerProvider, err := newTraceProvider(ctx, res, cfg)
 	if err != nil {
 		handleErr(err)
-		return
+		return shutdown, err
 	}
 	shutdownFuncs = append(shutdownFuncs, tracerProvider.Shutdown)
 	otel.SetTracerProvider(tracerProvider)
 	otel.SetTextMapPropagator(autoprop.NewTextMapPropagator())
 
-	return
+	return shutdown, err
 }
 
 // TODO this is the place to pass extra information back to the tracing tool. Implement a mechanism
 // to pass arbitrary information from the service, also identify any AWS info to pass back (ec2 etc)
 func newResource(serviceName string, ctx context.Context) (*resource.Resource, error) {
-
 	return resource.New(ctx,
 		resource.WithAttributes(
 			// the service name used to display traces in backends
@@ -72,7 +71,6 @@ func newResource(serviceName string, ctx context.Context) (*resource.Resource, e
 }
 
 func newTraceProvider(ctx context.Context, res *resource.Resource, cfg Config) (*sdktrace.TracerProvider, error) {
-
 	traceExporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithEndpoint(cfg.OtelExporterOtlpEndpoint), otlptracegrpc.WithInsecure())
 	if err != nil {
